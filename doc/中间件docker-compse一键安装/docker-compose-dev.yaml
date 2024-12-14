@@ -1,0 +1,260 @@
+version: "3.5"
+
+services:
+  mall4cloud-nginx:
+    image: nginx:1.24.0
+    container_name: mall4cloud-nginx
+    restart: always
+    privileged: true
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - 80:80
+      - 443:443
+      - 8019:8019
+      - 8020:8020
+    volumes:
+      #主配置文件
+      - /usr/local/nginx/config/nginx.conf:/etc/nginx/nginx.conf
+        #被include的配置文件夹
+        #- /usr/local/nginx/config/conf.d:/etc/nginx/conf.d
+        #ssl证书文件夹
+        #- /usr/local/nginx/config/cert/:/etc/nginx/cert/
+      #日志目录
+      - /usr/local/nginx/logs:/var/nginx/logs
+
+      #nginx示例的index目录
+      - /usr/local/nginx/html/platform/dist:/usr/share/nginx/html/platform/dist
+      - /usr/local/nginx/html/multishop/dist:/usr/share/nginx/html/multishop/dist
+
+  mall4cloud-mysql:
+    image: mysql:8.0
+    container_name: mall4cloud-mysql
+    restart: always
+    # docker安全验证
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - TZ=Asia/Shanghai
+      - MYSQL_ROOT_PASSWORD=ciwei@hg2024%
+    #network_mode: "host"
+    #expose:
+    ports:
+      - 3306:3306
+    volumes:
+      # 前面宿主机目录，后面容器内目录(宿主机没有的目录会自动创建)
+      - /usr/local/mysql-8.0/data:/var/lib/mysql
+      # 配置文件权限 chmod 644 docker.cnf
+      - /usr/local/mysql-8.0/conf.d:/etc/mysql/conf.d
+      - /usr/local/mysql-8.0/initdb:/docker-entrypoint-initdb.d
+      - /usr/local/mysql-8.0/logs:/var/log/mysql
+
+
+  mall4cloud-minio:
+    image: minio/minio:RELEASE.2024-07-16T23-46-41Z
+    container_name: mall4cloud-minio
+    restart: always
+    command: server --console-address ":9001" /data
+    #command: server /data
+    ports:
+      - 9000:9000 #api
+      - 9001:9001 #console
+    volumes:
+      - /usr/local/minio/data:/data # 映射文件路径
+      # - /usr/local/minio/config:/etc/minio/.minio # 映射文件路径
+      #同步主机时间
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      # - TZ=Asia/Shanghai
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=ciwei@hg2024!
+    logging:
+      options:
+        max-size: "50M"                          # 最大日志文件限制
+        max-file: "10"
+      driver: json-file
+
+  mall4cloud-redis:
+    image: redis:6.2
+    container_name: mall4cloud-redis
+    restart: always # 容器开机自启
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - /usr/local/redis/redis.conf:/etc/redis/redis.conf # 映射配置文件目录，宿主机:容器
+      - /usr/local/redis/data:/var/lib/redis/data # 映射数据目录，宿主机:容器
+      - /usr/local/redis/logs:/var/lib/redis/logs # 映射数据目录，宿主机:容器
+    privileged: true # 获取宿主机root权限
+    command: ["redis-server","/etc/redis/redis.conf"] # 指定配置文件启动redis-server进程
+      #expose:
+    #- 6379  # 指定宿主机端口与容器端口映射关系，宿主机：容器
+    ports:
+      - 6379:6379
+
+
+  mall4cloud-nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: mall4cloud-nacos
+    restart: always
+    depends_on:
+      - mall4cloud-mysql
+      #network_mode: "host"
+      #expose:
+      #- 8848
+      #- 9848
+      #- 9849
+    ports:
+      - 8848:8848
+      - 9848:9848
+      - 9849:9849
+    environment:
+      - TZ=Asia/Shanghai
+      - JVM_XMS=256m
+      - JVM_XMX=256m
+      - MODE=standalone
+      - PREFER_HOST_MODE=hostname
+      - SPRING_DATASOURCE_PLATFORM=mysql
+      - MYSQL_SERVICE_HOST=192.168.30.21
+      - MYSQL_SERVICE_PORT=3306
+      - MYSQL_SERVICE_DB_NAME=mall4cloud_nacos
+      - MYSQL_SERVICE_USER=root
+      - MYSQL_SERVICE_PASSWORD=ciwei@hg2024%
+      - MYSQL_SERVICE_DB_PARAM=characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useUnicode=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      - NACOS_AUTH_ENABLE=true
+      - NACOS_AUTH_TOKEN=SecretKey012345678901234567890123456789012345678901234567890123456789
+      - NACOS_AUTH_IDENTITY_KEY=nacos
+      - NACOS_AUTH_IDENTITY_VALUE=nacos
+      # - NACOS_AUTH_ENABLE=true
+      # - NACOS_CORE_AUTH_PLUGIN_NACOS_TOKEN_SECRET_KEY=TWFsbDRqTWFsbDRjbG91ZE1hbGw0ak1hbGw0Y2xvdWRNYWxsNGpNYWxsNGNsb3Vk
+      # - NACOS_CORE_AUTH_SERVER_IDENTITY_KEY=mall4j
+      # - NACOS_CORE_AUTH_SERVER_IDENTITY_VALUE=mall4cloud
+    volumes:
+      - ./nacos/logs:/home/nacos/logs
+      # - ./nacos/conf/custom.properties:/home/nacos/custom.properties
+
+  mall4cloud-seata:
+    image: seataio/seata-server:2.0.0
+    container_name: mall4cloud-seata
+    restart: always
+      #network_mode: "host"
+      #expose:
+      #- 8091
+    #- 7091
+    ports:
+      - 8091:8091
+      - 7091:7091
+    environment:
+      - TZ=Asia/Shanghai
+      #- TZ
+      #- STORE_MODE=db
+      - SEATA_IP=192.168.30.21
+      - SEATA_PORT=8091
+      #- STORE_DB_DBTYPE=mysql
+      #- STORE_DB_DRIVER_CLASS_NAME=com.mysql.cj.jdbc.Driver
+      #- STORE_DB_URL=jdbc:mysql://192.168.30.205:3306/mall4cloud_seata?characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useUnicode=true&useSSL=false&serverTimezone=UTC
+      #- STORE_DB_USER=root
+      #- STORE_DB_PASSWORD=ciwei@hg2024%
+    volumes:
+      - /usr/local/seata/application.yml:/seata-server/resources/application.yml
+
+  mall4cloud-elasticsearch:
+    image: elasticsearch:7.17.5
+    container_name: mall4cloud-elasticsearch
+    restart: always
+      #network_mode: "host"
+      #expose:
+      # - 9200
+    # - 9300
+    ports:
+      - 9200:9200
+      - 9300:9300
+    environment:
+      - TZ=Asia/Shanghai
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - /usr/local/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - /usr/local/elasticsearch/data:/usr/share/elasticsearch/data
+      - /usr/local/elasticsearch/plugins:/usr/share/elasticsearch/plugins
+
+  mall4cloud-kibana:
+    image: kibana:7.17.5
+    container_name: mall4cloud-kibana
+    restart: always
+      #network_mode: "host"
+      #expose:
+    # - 5601
+    ports:
+      - 5601:5601
+    environment:
+      - TZ=Asia/Shanghai
+      - ELASTICSEARCH_HOSTS=http://192.168.30.21:9200
+    depends_on:
+      - mall4cloud-elasticsearch
+
+  mall4cloud-canal:
+    image: canal/canal-server:v1.1.6
+    container_name: mall4cloud-canal
+    restart: always
+      #network_mode: "host"
+      #expose:
+    # - 11111
+    ports:
+      - 11111:11111
+    volumes:
+      - /usr/local/canal/conf/example:/home/admin/canal-server/conf/example
+      - /usr/local/canal/conf/canal.properties:/home/admin/canal-server/conf/canal.properties
+      - /usr/local/canal/logs:/home/admin/canal-server/logs
+
+
+  mall4cloud-rocketmq-namesrv:
+    image: apache/rocketmq:4.9.4
+    container_name: mall4cloud-rocketmq-namesrv
+    restart: always
+      #network_mode: "host"
+      #expose:
+    # - 9876
+    ports:
+      - 9876:9876
+    volumes:
+      - /usr/local/rocketmq/namesrv/logs:/home/rocketmq/logs
+      - /usr/local/rocketmq/namesrv/store:/home/rocketmq/store
+    environment:
+      JAVA_OPT_EXT: "-Duser.home=/home/rocketmq -Xms512M -Xmx512M -Xmn128M"
+    command: ["sh","mqnamesrv"]
+
+  mall4cloud-rocketmq-broker:
+    image: apache/rocketmq:4.9.4
+    container_name: mall4cloud-rocketmq-broker
+    restart: always
+      #network_mode: "host"
+      #expose:
+      # - 10909
+    # - 10911
+    ports:
+      - 10909:10909
+      - 10911:10911
+    volumes:
+      - /usr/local/rocketmq/broker/logs:/home/rocketmq/logs
+      - /usr/local/rocketmq/broker/store:/home/rocketmq/store
+      - /usr/local/rocketmq/broker/conf/broker.conf:/etc/rocketmq/broker.conf
+    environment:
+      JAVA_OPT_EXT: "-Duser.home=/home/rocketmq -Xms512M -Xmx512M -Xmn128M -XX:-AssumeMP"
+    command: ["sh","mqbroker","-c","/etc/rocketmq/broker.conf","-n","192.168.30.21:9876","autoCreateTopicEnable=true"]
+    depends_on:
+      - mall4cloud-rocketmq-namesrv
+
+  mall4cloud-rocketmq-dashboard:
+    image: apacherocketmq/rocketmq-dashboard:1.0.0
+    container_name: mall4cloud-rocketmq-dashboard
+    restart: always
+    volumes:
+      - /usr/local/rocketmq/rocketmq-dashboard/logs:/home/rocketmq/dashboard/logs
+      - /usr/local/rocketmq/rocketmq-dashboard/data:/tmp/rocketmq/dashboard/data
+    ports:
+      - 8180:8080
+    environment:
+      JAVA_OPTS: "-Duser.timezone=Asia/Shanghai -Drocketmq.namesrv.addr=192.168.30.21:9876 -Dcom.rocketmq.sendMessageWithVIPChannel=false -Drocketmq.config.loginRequired=true"
+    depends_on:
+      - mall4cloud-rocketmq-namesrv

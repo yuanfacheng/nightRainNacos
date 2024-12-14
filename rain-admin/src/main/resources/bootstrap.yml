@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: service-provider
+  cloud:
+    nacos:
+      server-addr: 192.168.0.101:8808,192.168.0.101:8818,192.168.0.101:8828
+      config:
+        file-extension: yml #文件后缀名
+      username: nacos
+      password: nacos
+
